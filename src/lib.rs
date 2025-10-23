@@ -25,8 +25,8 @@ use mutica::{
 use pyo3::{
     Bound, IntoPyObjectExt, PyAny, PyResult, Python, pymodule,
     types::{
-        PyAnyMethods, PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyModuleMethods, PyString,
-        PyTuple,
+        PyAnyMethods, PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyModuleMethods, PyNone,
+        PyString, PyTuple,
     },
 };
 
@@ -220,6 +220,7 @@ impl MuticaType {
 }
 
 impl MuticaType {
+    #[stacksafe::stacksafe]
     pub fn __as_py(
         &self,
         rec_detector: &mut Vec<(TaggedPtr<()>, pyo3::Py<PyDict>)>,
@@ -294,28 +295,38 @@ impl MuticaType {
                 py_dict.set_item("kind", "Specialize")?;
                 py_dict.into_py_any(py)
             }
-            Type::FixPoint(fix_point) => {
-                let tagged_ptr = fix_point.tagged_ptr();
-                if let Some((_, py_obj)) = rec_detector.iter().find(|(ptr, _)| ptr == &tagged_ptr) {
-                    return py_obj.into_py_any(py);
-                }
+            Type::FixPoint(fix_point) => match fix_point.reference().upgrade() {
+                Some(inner) => {
+                    let inner = match inner.as_ref().get_inner() {
+                        Some(ty) => ty,
+                        None => {
+                            return PyNone::get(py).into_py_any(py);
+                        }
+                    };
+                    let tagged_ptr = inner.tagged_ptr();
+                    if let Some((_, py_obj)) =
+                        rec_detector.iter().find(|(ptr, _)| ptr == &tagged_ptr)
+                    {
+                        return py_obj.into_py_any(py);
+                    }
 
-                let py_dict = PyDict::new(py);
-                let placeholder_obj = py_dict.unbind();
-                rec_detector.push((tagged_ptr, placeholder_obj.clone_ref(py)));
+                    let py_dict = PyDict::new(py);
+                    let placeholder_obj = py_dict.unbind();
+                    rec_detector.push((tagged_ptr.clone(), placeholder_obj.clone_ref(py)));
 
-                let bound_placeholder = placeholder_obj.bind(py);
-                if let Some(inner_type) = fix_point.get_inner() {
-                    let inner_py =
-                        MuticaType::from_type(inner_type.clone()).__as_py(rec_detector)?;
+                    let bound_placeholder = placeholder_obj.bind(py);
+                    let ty = MuticaType::from_type(inner.clone()).__as_py(rec_detector)?;
+                    rec_detector.pop();
                     bound_placeholder.set_item("kind", "FixPoint")?;
-                    bound_placeholder.set_item("inner", inner_py)?;
-                } else {
-                    bound_placeholder.set_item("kind", "FixPoint")?;
-                    bound_placeholder.set_item("inner", py.None())?;
+                    bound_placeholder.set_item("inner", ty)?;
+                    bound_placeholder.set_item(
+                        "tagged_ptr",
+                        PyTuple::new(py, vec![tagged_ptr.ptr() as usize, tagged_ptr.tag()])?,
+                    )?;
+                    bound_placeholder.into_py_any(py)
                 }
-                bound_placeholder.into_py_any(py)
-            }
+                None => PyNone::get(py).into_py_any(py),
+            },
             Type::Invoke(invoke) => {
                 let py_dict = PyDict::new(py);
                 py_dict.set_item(
@@ -345,9 +356,10 @@ impl MuticaType {
                 py_dict.set_item("kind", "Invoke")?;
                 py_dict.into_py_any(py)
             }
-            Type::Variable(_variable) => {
+            Type::Variable(variable) => {
                 let py_dict = PyDict::new(py);
                 py_dict.set_item("kind", "Variable")?;
+                py_dict.set_item("debruijn_index", variable.debruijn_index())?;
                 py_dict.into_py_any(py)
             }
             Type::Closure(closure) => {

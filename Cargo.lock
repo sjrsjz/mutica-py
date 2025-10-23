@@ -427,9 +427,7 @@ dependencies = [
 
 [[package]]
 name = "mutica"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d795e71fff4b463814312202ada7b87cc085bf2d8c83f43523db98619ecfb499"
+version = "0.2.2"
 dependencies = [
  "clap",
  "mutica-compiler",
@@ -439,9 +437,7 @@ dependencies = [
 
 [[package]]
 name = "mutica-compiler"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6490f6e79f7a53b2a673b9f6dbd79f1d46fa75eba1044dd1f145a750e1c8f01"
+version = "0.2.2"
 dependencies = [
  "ariadne",
  "lalrpop",
@@ -453,9 +449,7 @@ dependencies = [
 
 [[package]]
 name = "mutica-core"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6a82bc2a4134a86ea3333410238cbf8bc15c2af3b45c186823be2d526b57730"
+version = "0.2.2"
 dependencies = [
  "rust-arc-gc",
  "smallvec",
@@ -469,14 +463,13 @@ version = "0.1.0"
 dependencies = [
  "mutica",
  "pyo3",
+ "stacksafe",
  "tokio",
 ]
 
 [[package]]
 name = "mutica-semantic"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59f017d3be99a2959c88e7e304b48f82424b84a47ef63e21cc9cf7023d5fa7ac"
+version = "0.2.2"
 dependencies = [
  "mutica-compiler",
  "mutica-core",

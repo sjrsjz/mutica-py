@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-mutica = "0.2.1"
+mutica = { version = "0.2.2", path = "../Mutica" }
 pyo3 = { version = "0.27.1", features = ["extension-module"] }
+stacksafe = "0.1.4"
 tokio = "1.48.0"
 
 [lib]
