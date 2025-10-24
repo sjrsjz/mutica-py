@@ -11,28 +11,45 @@ use mutica::{
     mutica_core::{
         arc_gc::{arc::GCArcWeak, gc::GC, traceable::GCTraceable},
         scheduler::{self, LinearScheduler},
+        smallvec,
         types::{
-            AsDispatcher, CoinductiveType, GcAllocObject, TaggedPtr, Type, TypeError,
-            character::Character, character_value::CharacterValue, float::Float,
-            float_value::FloatValue, generalize::Generalize, integer::Integer,
-            integer_value::IntegerValue, lazy::Lazy, list::List, namespace::Namespace,
-            opcode::Opcode, rot::Rotate, specialize::Specialize, tuple::Tuple,
-            type_bound::TypeBound,
+            AsDispatcher, CoinductiveType, GcAllocObject, Representable, TaggedPtr, Type,
+            TypeCheckContext, TypeError, character::Character, character_value::CharacterValue,
+            closure::ClosureEnv, float::Float, float_value::FloatValue, generalize::Generalize,
+            integer::Integer, integer_value::IntegerValue, lazy::Lazy, list::List,
+            namespace::Namespace, opcode::Opcode, rot::Rotate, specialize::Specialize,
+            tuple::Tuple, type_bound::TypeBound,
         },
-        util::{cycle_detector::FastCycleDetector, rootstack::RootStack},
+        util::{collector::Collector, cycle_detector::FastCycleDetector, rootstack::RootStack},
     },
 };
 use pyo3::{
-    Bound, IntoPyObjectExt, PyAny, PyResult, Python, pymodule,
+    Bound, IntoPyObjectExt, PyAny, PyErr, PyResult, Python, pymodule,
     types::{
         PyAnyMethods, PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyModuleMethods, PyNone,
         PyString, PyTuple,
     },
 };
+use std::io;
+use std::sync::Arc;
 
 // 定义一个用于GC堆分配的类型
 pub struct TypeGcOnceLock {
     inner: OnceLock<Type<TypeGcOnceLock>>,
+}
+
+// Convert the underlying TypeError into the Python-exposable MuticaError
+impl From<TypeError<Type<TypeGcOnceLock>, TypeGcOnceLock>> for MuticaError {
+    fn from(err: TypeError<Type<TypeGcOnceLock>, TypeGcOnceLock>) -> MuticaError {
+        MuticaError { err }
+    }
+}
+
+// Allow converting MuticaError into a PyErr so it can be returned directly to Python
+impl From<MuticaError> for PyErr {
+    fn from(err: MuticaError) -> PyErr {
+        pyo3::exceptions::PyRuntimeError::new_err(err.message())
+    }
 }
 
 impl GcAllocObject<TypeGcOnceLock> for TypeGcOnceLock {
@@ -216,6 +233,40 @@ impl MuticaType {
     pub fn as_py(&self) -> PyResult<pyo3::Py<PyAny>> {
         let mut rec_detector = Vec::new();
         self.__as_py(&mut rec_detector)
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!(
+            "MuticaType({})",
+            self.ty.represent(&mut FastCycleDetector::new())
+        )
+    }
+
+    pub fn __str__(&self) -> String {
+        self.ty.display(&mut FastCycleDetector::new())
+    }
+
+    pub fn fulfill(&self, other: &MuticaType) -> PyResult<bool> {
+        let mut assumptions = smallvec::SmallVec::new();
+        let closure_env = ClosureEnv::new(Vec::<Type<TypeGcOnceLock>>::new());
+        let mut pattern_env = Collector::new_disabled();
+        let mut ctx = TypeCheckContext::new(
+            &mut assumptions,
+            (&closure_env, &closure_env),
+            &mut pattern_env,
+        );
+        self.ty
+            .fulfill(other.ty.as_ref_dispatcher(), &mut ctx)
+            .map(|x| x.is_some())
+            .map_err(|e| MuticaError { err: e }.into())
+    }
+
+    pub fn unwrap_fixpoint(&self) -> PyResult<MuticaType> {
+        self.ty
+            .map(&mut FastCycleDetector::new(), |_, ty| {
+                MuticaType::from_type(ty.clone_data())
+            })
+            .map_err(|e| MuticaError { err: e }.into())
     }
 }
 
@@ -693,14 +744,64 @@ impl MuticaEngine {
     }
 
     pub fn step(&mut self, gc: &mut MuticaGC) -> PyResult<bool> {
-        self.scheduler.step(gc.gc()).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(MuticaError { err: e }.message())
-        })
+        self.scheduler
+            .step(gc.gc())
+            .map_err(|e| MuticaError { err: e }.into())
     }
 
     pub fn get_current_type(&self) -> MuticaType {
         MuticaType {
             ty: self.scheduler.current().clone(),
+        }
+    }
+
+    pub fn set_io_handler(&mut self, io_handler: Option<pyo3::Py<PyAny>>) {
+        if let Some(handler) = io_handler {
+            let wrapped_handler: IOHandler = Box::new(move |ty1, ty2| {
+                // Acquire the GIL when calling back into Python
+                Python::attach(|py| {
+                    // Create Python-side MuticaType objects for the arguments
+                    let py_ty1 =
+                        pyo3::Py::new(py, MuticaType::from_type(ty1.clone())).map_err(|e| {
+                            TypeError::RuntimeError(Arc::new(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("Python IO handler error: {}", e),
+                            )))
+                        })?;
+                    let py_ty2 =
+                        pyo3::Py::new(py, MuticaType::from_type(ty2.clone())).map_err(|e| {
+                            TypeError::RuntimeError(Arc::new(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("Python IO handler error: {}", e),
+                            )))
+                        })?;
+
+                    let result = handler.call1(py, (py_ty1, py_ty2)).map_err(|e| {
+                        TypeError::RuntimeError(Arc::new(io::Error::new(
+                            io::ErrorKind::Other,
+                            format!("Python IO handler error: {}", e),
+                        )))
+                    })?;
+
+                    if result.is_none(py) {
+                        Ok(None)
+                    } else {
+                        let mutica_type =
+                            result.extract::<pyo3::Py<MuticaType>>(py).map_err(|e| {
+                                TypeError::RuntimeError(Arc::new(io::Error::new(
+                                    io::ErrorKind::Other,
+                                    format!("Python IO handler error: {}", e),
+                                )))
+                            })?;
+                        let mt = mutica_type.borrow(py).ty.clone();
+                        Ok(Some(mt))
+                    }
+                })
+            });
+
+            *self.scheduler.io_handler_mut() = Some(wrapped_handler);
+        } else {
+            *self.scheduler.io_handler_mut() = None;
         }
     }
 }
