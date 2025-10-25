@@ -427,9 +427,9 @@ dependencies = [
 
 [[package]]
 name = "mutica"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a99ecb848713b7ce653cfc3a1e70b3b0d566cff67adaf45e062df17dd8b89353"
+checksum = "03feeb7985e295ed61144dcb142e105916a67850abd22d62172744274ad2758c"
 dependencies = [
  "clap",
  "mutica-compiler",
@@ -439,9 +439,9 @@ dependencies = [
 
 [[package]]
 name = "mutica-compiler"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f31ee1fa95cd0479f0c65ca1b2487d550352a13659db88324e8dffe7bebaa33"
+checksum = "4d42004de84377d12eb56ae18384f876df58e5dfda403ede147857460ab8102e"
 dependencies = [
  "ariadne",
  "lalrpop",
@@ -453,9 +453,9 @@ dependencies = [
 
 [[package]]
 name = "mutica-core"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eca0b23f717f9d85854c3b2e16d1d66be8af1827a9356b19235c545f69cd525b"
+checksum = "deef11842a083aca4acf5f992879169a754c132a45f55bc34f4eeb40d275eac8"
 dependencies = [
  "rust-arc-gc",
  "smallvec",
@@ -475,9 +475,9 @@ dependencies = [
 
 [[package]]
 name = "mutica-semantic"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2adfb3136e4aacb779b089753f4f3dfc216eaef361253f36f44acbe708ee633"
+checksum = "f50017c8cbdfc9d84630eaa0671492f984d92106a8903a6a3f14cd73b7c04317"
 dependencies = [
  "mutica-compiler",
  "mutica-core",

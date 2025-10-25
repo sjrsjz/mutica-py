@@ -530,6 +530,7 @@ pub struct MuticaGC {
 #[pyo3::pymethods]
 impl MuticaGC {
     #[new]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         MuticaGC { gc: GC::new() }
     }
@@ -571,6 +572,7 @@ impl MuticaEngine {
 #[pyo3::pymethods]
 impl MuticaEngine {
     #[new]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         MuticaEngine {
             scheduler: LinearScheduler::new(TypeBound::top(), None),
@@ -763,24 +765,24 @@ impl MuticaEngine {
                     // Create Python-side MuticaType objects for the arguments
                     let py_ty1 =
                         pyo3::Py::new(py, MuticaType::from_type(ty1.clone())).map_err(|e| {
-                            TypeError::RuntimeError(Arc::new(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("Python IO handler error: {}", e),
-                            )))
+                            TypeError::RuntimeError(Arc::new(io::Error::other(format!(
+                                "Python IO handler error: {}",
+                                e
+                            ))))
                         })?;
                     let py_ty2 =
                         pyo3::Py::new(py, MuticaType::from_type(ty2.clone())).map_err(|e| {
-                            TypeError::RuntimeError(Arc::new(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("Python IO handler error: {}", e),
-                            )))
+                            TypeError::RuntimeError(Arc::new(io::Error::other(format!(
+                                "Python IO handler error: {}",
+                                e
+                            ))))
                         })?;
 
                     let result = handler.call1(py, (py_ty1, py_ty2)).map_err(|e| {
-                        TypeError::RuntimeError(Arc::new(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("Python IO handler error: {}", e),
-                        )))
+                        TypeError::RuntimeError(Arc::new(io::Error::other(format!(
+                            "Python IO handler error: {}",
+                            e
+                        ))))
                     })?;
 
                     if result.is_none(py) {
@@ -788,10 +790,10 @@ impl MuticaEngine {
                     } else {
                         let mutica_type =
                             result.extract::<pyo3::Py<MuticaType>>(py).map_err(|e| {
-                                TypeError::RuntimeError(Arc::new(io::Error::new(
-                                    io::ErrorKind::Other,
-                                    format!("Python IO handler error: {}", e),
-                                )))
+                                TypeError::RuntimeError(Arc::new(io::Error::other(format!(
+                                    "Python IO handler error: {}",
+                                    e
+                                ))))
                             })?;
                         let mt = mutica_type.borrow(py).ty.clone();
                         Ok(Some(mt))
